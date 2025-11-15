@@ -5,7 +5,7 @@ import verifyEmailTemplate from "../utils/verifyEmailTemplate.js";
 
 export async function registerUserController(req, res) {
   try {
-     const { name, email, password } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -60,6 +60,36 @@ export async function registerUserController(req, res) {
   }
 }
 
-export async function verifyEmail() {
-  
+export async function verifyEmailController(req, res) {
+  try {
+    const { code } = req.body;
+
+    const user = await UserModel.findOne({ _id: code });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "Invalid Code",
+        error: true,
+        success: false,
+      });
+    }
+
+    const updateUser = await UserModel.updateOne(
+      { _id: code },
+      { verify_email: true }
+    );
+
+    return res.json({
+      message: "Verify email done",
+      error: false,
+      success: true,
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      message: error,
+      error: true,
+      success: true,
+    });
+  }
 }
