@@ -2,6 +2,8 @@ import UserModel from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import sendEmail from "../config/sendEmail.js";
 import verifyEmailTemplate from "../utils/verifyEmailTemplate.js";
+import generatedAccessToken from "../utils/generatedAccessToken.js";
+import generatedRefreshToken from "../utils/generatedRefreshToken.js";
 
 export async function registerUserController(req, res) {
   try {
@@ -84,12 +86,81 @@ export async function verifyEmailController(req, res) {
       error: false,
       success: true,
     });
-
   } catch (error) {
     return res.status(500).json({
-      message: error,
+      message: error.message || error,
       error: true,
+      success: false,
+    });
+  }
+}
+
+export async function loginController(req, res) {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Provide email or password",
+        error: true,
+        success: false,
+      });
+    }
+
+    const user = await UserModel.findOne({ email });
+
+    if (!user) {
+      return res.json({
+        message: "User not register",
+        error: true,
+        success: false,
+      });
+    }
+
+    if (user.status !== "Active") {
+      return res.status(400).json({
+        message: "Contact to Admin",
+        error: true,
+        success: false,
+      });
+    }
+
+    const checkPassword = await bcrypt.compare(password, user.password);
+
+    if (!checkPassword) {
+      return res.status(400).json({
+        message: "Please Check Password",
+        error: true,
+        success: false,
+      });
+    }
+
+    const accessToken = await generatedAccessToken(user._id);
+    const refreshToken = await generatedRefreshToken(user._id);
+
+    const cookiesOptions = {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+    };
+
+    res.cookie("accessToken", accessToken, cookiesOptions);
+    res.cookie("rereshToken", refreshToken, cookiesOptions);
+
+    res.json({
+      message: "user Login Successfully",
+      error: false,
       success: true,
+      data: {
+        accessToken,
+        refreshToken,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
     });
   }
 }
