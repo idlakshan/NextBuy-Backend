@@ -145,7 +145,7 @@ export async function loginController(req, res) {
     };
 
     res.cookie("accessToken", accessToken, cookiesOptions);
-    res.cookie("rereshToken", refreshToken, cookiesOptions);
+    res.cookie("refreshToken", refreshToken, cookiesOptions);
 
     res.json({
       message: "user Login Successfully",
@@ -156,6 +156,41 @@ export async function loginController(req, res) {
         refreshToken,
       },
     });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
+
+
+export async function LogoutController(req, res) {
+  
+  try {
+    const userId= req.userId;
+
+    const cookiesOptions = {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+    };
+
+    res.clearCookie("accessToken",cookiesOptions);
+    res.clearCookie("refreshToken",cookiesOptions);
+
+     const removeRefreshToken = await UserModel.findByIdAndUpdate(userId,{
+            refresh_token : ""
+        })
+
+
+    return res.json({
+      message:"Logout successfully",
+      error:false,
+      success:true
+    })
+
   } catch (error) {
     return res.status(500).json({
       message: error.message || error,
