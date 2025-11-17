@@ -166,11 +166,9 @@ export async function loginController(req, res) {
   }
 }
 
-
 export async function LogoutController(req, res) {
-  
   try {
-    const userId= req.userId;
+    const userId = req.userId;
 
     const cookiesOptions = {
       httpOnly: true,
@@ -178,20 +176,18 @@ export async function LogoutController(req, res) {
       sameSite: "None",
     };
 
-    res.clearCookie("accessToken",cookiesOptions);
-    res.clearCookie("refreshToken",cookiesOptions);
+    res.clearCookie("accessToken", cookiesOptions);
+    res.clearCookie("refreshToken", cookiesOptions);
 
-     const removeRefreshToken = await UserModel.findByIdAndUpdate(userId,{
-            refresh_token : ""
-        })
-
+    const removeRefreshToken = await UserModel.findByIdAndUpdate(userId, {
+      refresh_token: "",
+    });
 
     return res.json({
-      message:"Logout successfully",
-      error:false,
-      success:true
-    })
-
+      message: "Logout successfully",
+      error: false,
+      success: true,
+    });
   } catch (error) {
     return res.status(500).json({
       message: error.message || error,
@@ -201,34 +197,70 @@ export async function LogoutController(req, res) {
   }
 }
 
-
 //upload user avatar
-export async  function uploadAvatarController(req, res){
-    try {
-        const userId = req.userId 
-        const image = req.file  
+export async function uploadAvatarController(req, res) {
+  try {
+    const userId = req.userId;
+    const image = req.file;
 
-        const upload = await uploadImageCloudinary(image)
-        
-        const updateUser = await UserModel.findByIdAndUpdate(userId,{
-            avatar : upload.url
-        })
+    const upload = await uploadImageCloudinary(image);
 
-        return res.json({
-            message : "upload profile",
-            success : true,
-            error : false,
-            data : {
-                _id : userId,
-                avatar : upload.url
-            }
-        })
+    const updateUser = await UserModel.findByIdAndUpdate(userId, {
+      avatar: upload.url,
+    });
 
-    } catch (error) {
-        return res.status(500).json({
-            message : error.message || error,
-            error : true,
-            success : false
-        })
+    return res.json({
+      message: "upload profile",
+      success: true,
+      error: false,
+      data: {
+        _id: userId,
+        avatar: upload.url,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
+
+export async function updateUserDetails(req, res) {
+  try {
+    const userId = req.userId;
+    const { name, email, mobile, password } = req.body;
+
+    let hashPassword = "";
+
+    if (password) {
+      const salt = await bcryptjs.genSalt(10);
+      hashPassword = await bcryptjs.hash(password, salt);
     }
+
+    const updateUser = await UserModel.findByIdAndUpdate(
+      { _id: userId },
+      {
+        ...(name && { name: name }),
+        ...(email && { email: email }),
+        ...(mobile && { mobile: mobile }),
+        ...(password && { password: hashPassword }),
+      },
+      { new: true }
+    );
+
+    return res.json({
+      message: "Updated successfully",
+      error: false,
+      success: true,
+      data: updateUser,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
 }
