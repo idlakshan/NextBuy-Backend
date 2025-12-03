@@ -11,7 +11,7 @@ userRouter.post('/login', loginController);
 userRouter.post('/logout',auth,LogoutController);
 userRouter.put('/upload-avatar',auth,upload.single('avatar'),uploadAvatarController);
 userRouter.put('/update-user',auth,updateUserDetails);
-userRouter.put('/frogot-password',forgotPasswordController);
+userRouter.put('/forgot-password',forgotPasswordController);
 userRouter.put('/verify-password',verifyForgotPasswordOtpController);
 userRouter.put('/reset-password',resetpasswordController);
 userRouter.post('/refresh-token',refreshTokenController);

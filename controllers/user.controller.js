@@ -10,7 +10,7 @@ import forgotPasswordTemplate from "../utils/forgotPasswordTemplate.js";
 
 export async function registerUserController(req, res) {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password } = req.body || {};
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -268,6 +268,8 @@ export async function updateUserDetails(req, res) {
 }
 
 export async function forgotPasswordController(req, res) {
+  console.log(req);
+  
   try {
     const { email } = req.body;
 
@@ -399,8 +401,8 @@ export async function resetpasswordController(req, res) {
       });
     }
 
-    const salt = await bcryptjs.genSalt(10);
-    const hashPassword = await bcryptjs.hash(newPassword, salt);
+    const salt = await bcrypt.genSalt(10);
+    const hashPassword = await bcrypt.hash(newPassword, salt);
 
     const update = await UserModel.findOneAndUpdate(user._id, {
       password: hashPassword,
