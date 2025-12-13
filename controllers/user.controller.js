@@ -269,7 +269,7 @@ export async function updateUserDetails(req, res) {
 
 export async function forgotPasswordController(req, res) {
   console.log(req);
-  
+
   try {
     const { email } = req.body;
 
@@ -467,6 +467,26 @@ export async function refreshTokenController(req, res) {
       data: {
         accessToken: newAccessToken,
       },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
+
+export async function getUserDetails(req, res) {
+   //console.log(req);
+  try {
+    const userId = req.userId;
+    const user = await UserModel.findById(userId).select("-password -refresh_token");
+    return res.json({
+      message: "user details",
+      data: user,
+      error: false,
+      success: true,
     });
   } catch (error) {
     return res.status(500).json({
