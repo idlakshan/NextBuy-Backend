@@ -10,7 +10,7 @@ const auth =async (req, res, next) => {
 
   jwt.verify(token, process.env.SECRET_KEY_ACCESS_TOKEN, (err, decoded) => {
     if (err) {
-     // console.log("⏰ ACCESS TOKEN EXPIRED");
+     // console.log("ACCESS TOKEN EXPIRED");
       return res.sendStatus(403);
     }
     //console.log("ACCESS TOKEN VALID");

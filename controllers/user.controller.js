@@ -428,7 +428,7 @@ export async function resetpasswordController(req, res) {
 
 //refresh token controler
 export async function refreshTokenController(req, res) {
-  console.log("🔄 REFRESH CALLED");
+  console.log("REFRESH CALLED");
 
   try {
     const token = req.cookies.refreshToken;
