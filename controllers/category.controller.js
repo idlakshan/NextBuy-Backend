@@ -57,7 +57,7 @@ export const getCategoryController = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({
-      message: error.messsage || error,
+      message: error.message || error,
       error: true,
       success: false,
     });
