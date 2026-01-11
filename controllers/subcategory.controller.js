@@ -1,7 +1,7 @@
 import SubCategoryModel from "../models/subCategory.model.js"
 
 
-export const AddSubCategoryController = async(req,response)=>{
+export const AddSubCategoryController = async(req,res)=>{
     //console.log(request.body);
     try {
         const { name, image, category } = req.body 
@@ -57,7 +57,7 @@ export const getSubCategoryController = async(req,res)=>{
     }
 }
 
-export const updateSubCategoryController = async(req,response)=>{
+export const updateSubCategoryController = async(req,res)=>{
     try {
         const { _id, name, image,category } = req.body 
 
