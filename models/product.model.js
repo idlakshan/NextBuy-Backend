@@ -1,57 +1,65 @@
 import mongoose from "mongoose";
 
-const productSchema = new mongoose.Schema({
-    name : {
-        type : String,
+const productSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
     },
-    image : {
-        type : Array,
-        default : []
+    image: {
+      type: Array,
+      default: [],
     },
-    category : [
-        {
-            type : mongoose.Schema.ObjectId,
-            ref : 'Category'
-        }
+    category: [
+      {
+        type: mongoose.Schema.ObjectId,
+        ref: "Category",
+      },
     ],
-    subCategory : [
-        {
-            type : mongoose.Schema.ObjectId,
-            ref : 'SubCategory'
-        }
+    subCategory: [
+      {
+        type: mongoose.Schema.ObjectId,
+        ref: "SubCategory",
+      },
     ],
-    unit : {
-        type : String,
-        defualt : ""
+    unit: {
+      type: String,
+      defualt: "",
     },
-    stock : {
-        type : Number,
-        defualt : null
+    stock: {
+      type: Number,
+      defualt: null,
     },
-    price : {
-        type : Number,
-        defualt : null
+    price: {
+      type: Number,
+      defualt: null,
     },
-    discount : {
-        type : Number,
-        default : null
+    discount: {
+      type: Number,
+      default: null,
     },
-    description : {
-        type : String,
-        default : ""
+    description: {
+      type: String,
+      default: "",
     },
-    more_details : {
-        type : Object,
-        default : {}
+    more_details: {
+      type: Object,
+      default: {},
     },
-    publish : {
-        type : Boolean,
-        default : true
-    }
-},{
-    timestamps : true
-})
+    publish: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
 
-const ProductModel = mongoose.model('Product',productSchema)
+productSchema.index(
+  { name: "text", description: "text" },
+  { weights: { name: 10, description: 5 } },
+);
 
-export default ProductModel
+const ProductModel = mongoose.model("Product", productSchema);
+
+export default ProductModel;
