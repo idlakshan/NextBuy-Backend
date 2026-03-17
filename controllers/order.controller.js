@@ -2,6 +2,7 @@ import Stripe from "../config/stripe.js";
 import CartProductModel from "../models/cartproduct.model.js";
 import OrderModel from "../models/order.model.js";
 import UserModel from "../models/user.model.js";
+import ProductModel from "../models/product.model.js";
 import mongoose from "mongoose";
 
 export const pricewithDiscount = (price, dis = 1) => {
@@ -10,7 +11,11 @@ export const pricewithDiscount = (price, dis = 1) => {
   return actualPrice;
 };
 
+//transactions
 export async function CashOnDeliveryOrderController(request, response) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const userId = request.userId;
     const { list_items, totalAmt, addressId, subTotalAmt, deliveryCharge } =
@@ -28,6 +33,28 @@ export async function CashOnDeliveryOrderController(request, response) {
 
     const correctOrderTotal = orderSubTotal + (deliveryCharge || 0);
 
+    // Check and decrease stock for each product
+    for (const item of list_items) {
+      const product = await ProductModel.findById(item.productId._id).session(
+        session,
+      );
+
+      if (!product) {
+        throw new Error(`Product ${item.productId.name} not found`);
+      }
+
+      if (product.stock < item.quantity) {
+        throw new Error(
+          `Insufficient stock for ${item.productId.name}. Available: ${product.stock}, Requested: ${item.quantity}`,
+        );
+      }
+
+      // Decrease stock
+      product.stock -= item.quantity;
+      await product.save({ session });
+    }
+
+    // Create order items
     const orderItems = list_items.map((el) => {
       const priceAfterDiscount = pricewithDiscount(
         el.productId.price,
@@ -58,10 +85,19 @@ export async function CashOnDeliveryOrderController(request, response) {
       };
     });
 
-    const generatedOrder = await OrderModel.insertMany(orderItems);
+    const generatedOrder = await OrderModel.insertMany(orderItems, { session });
 
-    await CartProductModel.deleteMany({ userId: userId });
-    await UserModel.updateOne({ _id: userId }, { shopping_cart: [] });
+    // Clear cart
+    await CartProductModel.deleteMany({ userId: userId }, { session });
+    await UserModel.updateOne(
+      { _id: userId },
+      { shopping_cart: [] },
+      { session },
+    );
+
+    // Commit transaction
+    await session.commitTransaction();
+    session.endSession();
 
     return response.json({
       message: "Order placed successfully",
@@ -76,6 +112,9 @@ export async function CashOnDeliveryOrderController(request, response) {
       },
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
     return response.status(500).json({
       message: error.message || error,
       error: true,
@@ -83,6 +122,7 @@ export async function CashOnDeliveryOrderController(request, response) {
     });
   }
 }
+
 
 export async function paymentController(request, response) {
   try {
@@ -95,7 +135,7 @@ export async function paymentController(request, response) {
     const line_items = list_items.map((item) => {
       return {
         price_data: {
-          currency: "inr",
+          currency: "lkr",
           product_data: {
             name: item.productId.name,
             images: item.productId.image,
