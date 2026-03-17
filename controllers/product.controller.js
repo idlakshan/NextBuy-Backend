@@ -128,6 +128,9 @@ export const getProductByCategory = async(req,res)=>{
 }
 
 export const getProductByCategoryAndSubCategory = async (req, res) => {
+
+    console.log(req);
+    
   try {
     let { categoryId, subCategoryId, page = 1, limit = 10 } = req.body;
 
