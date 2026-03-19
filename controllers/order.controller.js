@@ -11,18 +11,18 @@ export const pricewithDiscount = (price, dis = 1) => {
   return actualPrice;
 };
 
-//transactions
+// Cash on Delivery Order (with transaction)
 export async function CashOnDeliveryOrderController(request, response) {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const userId = request.userId;
-    const { list_items, totalAmt, addressId, subTotalAmt, deliveryCharge } =
-      request.body;
+    const { list_items, addressId, deliveryCharge } = request.body;
 
     const orderId = `ORD-${new mongoose.Types.ObjectId()}`;
 
+    // Calculate order subtotal
     const orderSubTotal = list_items.reduce((sum, item) => {
       const priceAfterDiscount = pricewithDiscount(
         item.productId.price,
@@ -74,11 +74,9 @@ export async function CashOnDeliveryOrderController(request, response) {
         },
         quantity: el.quantity,
         itemSubTotal: priceAfterDiscount * el.quantity,
-
         paymentId: "",
         payment_status: "CASH ON DELIVERY",
         delivery_address: addressId,
-
         orderSubTotal: orderSubTotal,
         deliveryCharge: deliveryCharge || 0,
         orderTotal: correctOrderTotal,
@@ -95,7 +93,6 @@ export async function CashOnDeliveryOrderController(request, response) {
       { session },
     );
 
-    // Commit transaction
     await session.commitTransaction();
     session.endSession();
 
@@ -123,171 +120,332 @@ export async function CashOnDeliveryOrderController(request, response) {
   }
 }
 
-
+// Create Stripe Payment Session
 export async function paymentController(request, response) {
   try {
     const userId = request.userId;
-    const { list_items, totalAmt, addressId, subTotalAmt, deliveryCharge } =
-      request.body;
+    const { list_items, addressId, deliveryCharge } = request.body;
+
+    if (!userId) {
+      return response.status(400).json({
+        message: "User ID is required",
+        error: true,
+        success: false,
+      });
+    }
+
+    if (!list_items || !list_items.length) {
+      return response.status(400).json({
+        message: "No items in the order",
+        error: true,
+        success: false,
+      });
+    }
+
+    if (!addressId) {
+      return response.status(400).json({
+        message: "Delivery address is required",
+        error: true,
+        success: false,
+      });
+    }
 
     const user = await UserModel.findById(userId);
+    if (!user) {
+      return response.status(404).json({
+        message: "User not found",
+        error: true,
+        success: false,
+      });
+    }
 
+    // Check stock availability
+    for (const item of list_items) {
+      const product = await ProductModel.findById(item.productId._id);
+
+      if (!product) {
+        return response.status(404).json({
+          message: `Product ${item.productId.name} not found`,
+          error: true,
+          success: false,
+        });
+      }
+
+      if (product.stock < item.quantity) {
+        return response.status(400).json({
+          message: `Insufficient stock for ${item.productId.name}. Available: ${product.stock}, Requested: ${item.quantity}`,
+          error: true,
+          success: false,
+        });
+      }
+    }
+
+    // Calculate order subtotal
+    const calculatedSubTotal = list_items.reduce((sum, item) => {
+      const priceAfterDiscount = pricewithDiscount(
+        item.productId.price,
+        item.productId.discount,
+      );
+      return sum + priceAfterDiscount * item.quantity;
+    }, 0);
+
+    const orderTotal = calculatedSubTotal + (deliveryCharge || 0);
+
+    // Generate a unique order ID
+    const orderId = `ORD-${new mongoose.Types.ObjectId()}`;
+
+    // Prepare line items for Stripe
     const line_items = list_items.map((item) => {
+      const priceAfterDiscount = pricewithDiscount(
+        item.productId.price,
+        item.productId.discount,
+      );
+
+      const unitAmount = Math.round(priceAfterDiscount * 100);
+
       return {
         price_data: {
           currency: "lkr",
           product_data: {
             name: item.productId.name,
-            images: item.productId.image,
+            images: Array.isArray(item.productId.image)
+              ? item.productId.image
+              : [item.productId.image].filter(Boolean),
             metadata: {
-              productId: item.productId._id,
-              discount: item.productId.discount,
-              unit: item.productId.unit,
+              productId: item.productId._id.toString(),
+              discount: item.productId.discount?.toString() || "0",
+              unit: item.productId.unit || "piece",
+              quantity: item.quantity.toString(),
             },
           },
-          unit_amount:
-            pricewithDiscount(item.productId.price, item.productId.discount) *
-            100,
-        },
-        adjustable_quantity: {
-          enabled: true,
-          minimum: 1,
+          unit_amount: unitAmount,
         },
         quantity: item.quantity,
       };
     });
 
+    // Create Stripe checkout session
     const params = {
       submit_type: "pay",
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: user.email,
       metadata: {
-        userId: userId,
-        addressId: addressId,
-        deliveryCharge: deliveryCharge || 0,
-        orderTotal: totalAmt,
+        userId: userId.toString(),
+        addressId: addressId.toString(),
+        deliveryCharge: deliveryCharge?.toString() || "0",
+        orderTotal: orderTotal.toString(),
+        calculatedSubTotal: calculatedSubTotal.toString(),
+        orderId: orderId,
+        itemCount: list_items.length.toString(),
+        productDetails: JSON.stringify(
+          list_items.map((item) => ({
+            productId: item.productId._id.toString(),
+            quantity: item.quantity,
+            price: item.productId.price,
+            discount: item.productId.discount || 0,
+            name: item.productId.name,
+            image: Array.isArray(item.productId.image)
+              ? item.productId.image[0]
+              : item.productId.image,
+            unit: item.productId.unit || "piece",
+          })),
+        ),
       },
       line_items: line_items,
-      success_url: `${process.env.FRONTEND_URL}/success`,
-      cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+      success_url: `${process.env.FRONTEND_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}&order_id=${orderId}`,
+      cancel_url: `${process.env.FRONTEND_URL}/cart`,
+      shipping_address_collection: {
+        allowed_countries: ["LK"],
+      },
+      phone_number_collection: {
+        enabled: true,
+      },
     };
 
     const session = await Stripe.checkout.sessions.create(params);
 
-    return response.status(200).json(session);
+    return response.status(200).json({
+      id: session.id,
+      url: session.url,
+      orderId: orderId,
+      success: true,
+      error: false,
+    });
   } catch (error) {
+    console.error("Payment controller error:", error);
+
     return response.status(500).json({
-      message: error.message || error,
+      message: error.message || "An error occurred while processing payment",
       error: true,
       success: false,
     });
   }
 }
 
-const getOrderProductItems = async ({
-  lineItems,
-  userId,
-  addressId,
-  paymentId,
-  payment_status,
-  deliveryCharge,
-  orderTotal,
-}) => {
-  const productList = [];
-  const orderId = `ORD-${new mongoose.Types.ObjectId()}`;
+// Verify Payment and Save Order
+export async function verifyPaymentAndSaveOrderController(request, response) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  let orderSubTotal = 0;
-  const itemsWithDetails = [];
+  try {
+    const userId = request.userId;
+    const { session_id, order_id } = request.body;
 
-  if (lineItems?.data?.length) {
-    for (const item of lineItems.data) {
-      const product = await Stripe.products.retrieve(item.price.product);
-      const itemTotal = Number(item.amount_total / 100);
-      orderSubTotal += itemTotal;
-
-      itemsWithDetails.push({
-        item,
-        product,
-        itemTotal,
+    if (!session_id || !order_id) {
+      return response.status(400).json({
+        message: "Session ID and Order ID are required",
+        error: true,
+        success: false,
       });
     }
-  }
 
-  for (const { item, product, itemTotal } of itemsWithDetails) {
-    const originalPrice = item.price.unit_amount / 100;
+    // Retrieve the Stripe session
+    const stripeSession = await Stripe.checkout.sessions.retrieve(session_id);
 
-    const payload = {
-      userId: userId,
-      orderId: orderId,
-      productId: product.metadata.productId,
-      product_details: {
-        name: product.name,
-        image: product.images,
-        price: originalPrice,
-        discount: Number(product.metadata.discount) || 0,
-        unit: product.metadata.unit || "piece",
-      },
-      quantity: item.quantity,
-      itemSubTotal: itemTotal,
-
-      paymentId: paymentId,
-      payment_status: payment_status,
-      delivery_address: addressId,
-
-      orderSubTotal: orderSubTotal,
-      deliveryCharge: Number(deliveryCharge) || 0,
-      orderTotal: Number(orderTotal) || orderSubTotal,
-    };
-
-    productList.push(payload);
-  }
-
-  return productList;
-};
-
-export async function webhookStripe(request, response) {
-  const event = request.body;
-  const endPointSecret = process.env.STRIPE_ENPOINT_WEBHOOK_SECRET_KEY;
-
-  console.log("event", event);
-
-  switch (event.type) {
-    case "checkout.session.completed":
-      const session = event.data.object;
-      const lineItems = await Stripe.checkout.sessions.listLineItems(
-        session.id,
-      );
-      const userId = session.metadata.userId;
-
-      const orderProduct = await getOrderProductItems({
-        lineItems: lineItems,
-        userId: userId,
-        addressId: session.metadata.addressId,
-        paymentId: session.payment_intent,
-        payment_status: session.payment_status,
-        deliveryCharge: session.metadata.deliveryCharge,
-        orderTotal: session.metadata.orderTotal,
+    if (!stripeSession) {
+      return response.status(404).json({
+        message: "Payment session not found",
+        error: true,
+        success: false,
       });
+    }
 
-      const order = await OrderModel.insertMany(orderProduct);
+    // Check if payment was successful
+    if (stripeSession.payment_status !== "paid") {
+      return response.status(400).json({
+        message: "Payment not completed",
+        error: true,
+        success: false,
+      });
+    }
 
-      console.log("Order created:", order);
+    // Check if order already exists to prevent duplicates
+    const existingOrder = await OrderModel.findOne({
+      orderId: order_id,
+    }).session(session);
 
-      if (Boolean(order[0])) {
-        await UserModel.findByIdAndUpdate(userId, {
-          shopping_cart: [],
-        });
-        await CartProductModel.deleteMany({ userId: userId });
+    if (existingOrder) {
+      await session.abortTransaction();
+      session.endSession();
+
+      return response.json({
+        message: "Order already saved",
+        error: false,
+        success: true,
+        data: existingOrder,
+      });
+    }
+
+    // Parse product details
+    const productDetails = JSON.parse(stripeSession.metadata.productDetails);
+    const addressId = stripeSession.metadata.addressId;
+    const deliveryCharge =
+      parseFloat(stripeSession.metadata.deliveryCharge) || 0;
+    const orderTotal = parseFloat(stripeSession.metadata.orderTotal);
+    const orderSubTotal = parseFloat(stripeSession.metadata.calculatedSubTotal);
+
+    // Get line items from Stripe
+    const lineItems = await Stripe.checkout.sessions.listLineItems(session_id);
+
+    // Check and decrease stock for each product
+    for (const item of productDetails) {
+      const product = await ProductModel.findById(item.productId).session(
+        session,
+      );
+
+      if (!product) {
+        throw new Error(`Product ${item.name} not found`);
       }
-      break;
-    default:
-      console.log(`Unhandled event type ${event.type}`);
-  }
 
-  response.json({ received: true });
+      if (product.stock < item.quantity) {
+        throw new Error(
+          `Insufficient stock for ${item.name}. Available: ${product.stock}, Requested: ${item.quantity}`,
+        );
+      }
+
+      // Decrease stock
+      product.stock -= item.quantity;
+      await product.save({ session });
+    }
+
+    // Create order items
+    const orderItems = productDetails.map((item) => {
+      const priceAfterDiscount = pricewithDiscount(item.price, item.discount);
+
+      // Find matching line item to get actual amount paid
+      const lineItem = lineItems.data.find(
+        (li) =>
+          li.price.product === item.productId || li.description === item.name,
+      );
+
+      const itemSubTotal = lineItem
+        ? lineItem.amount_total / 100
+        : priceAfterDiscount * item.quantity;
+
+      return {
+        userId: userId,
+        orderId: order_id,
+        productId: item.productId,
+        product_details: {
+          name: item.name,
+          image: [item.image],
+          price: item.price,
+          discount: item.discount,
+          unit: item.unit,
+        },
+        quantity: item.quantity,
+        itemSubTotal: itemSubTotal,
+        paymentId: stripeSession.payment_intent,
+        payment_status: "PAID",
+        delivery_address: addressId,
+        orderSubTotal: orderSubTotal,
+        deliveryCharge: deliveryCharge,
+        orderTotal: orderTotal,
+      };
+    });
+
+    // Insert order items
+    const savedOrders = await OrderModel.insertMany(orderItems, { session });
+
+    // Clear cart
+    await CartProductModel.deleteMany({ userId: userId }, { session });
+    await UserModel.updateOne(
+      { _id: userId },
+      { shopping_cart: [] },
+      { session },
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return response.json({
+      message: "Order saved successfully",
+      error: false,
+      success: true,
+      data: {
+        orderId: order_id,
+        items: savedOrders,
+        orderSubTotal: orderSubTotal,
+        deliveryCharge: deliveryCharge,
+        orderTotal: orderTotal,
+      },
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
+    console.error("Verify payment error:", error);
+
+    return response.status(500).json({
+      message: error.message || "Failed to save order",
+      error: true,
+      success: false,
+    });
+  }
 }
 
+// Get order details
 export async function getOrderDetailsController(request, response) {
   try {
     const userId = request.userId;
@@ -309,4 +467,12 @@ export async function getOrderDetailsController(request, response) {
       success: false,
     });
   }
+}
+
+// webhook
+export async function webhookStripe(request, response) {
+  const event = request.body;
+  console.log("event type:", event.type);
+
+  response.json({ received: true });
 }

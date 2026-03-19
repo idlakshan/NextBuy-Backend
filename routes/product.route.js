@@ -11,14 +11,8 @@ productRouter.post('/get',getProductController)
 productRouter.post("/get-product-by-category",getProductByCategory)
 productRouter.post('/get-product-by-category-and-subcategory',getProductByCategoryAndSubCategory)
 productRouter.post('/get-product-details',getProductDetails)
-
-//update product
 productRouter.put('/update-product-details',auth,admin,updateProductDetails)
-
-//delete product
 productRouter.delete('/delete-product',auth,admin,deleteProductDetails)
-
-//search product 
 productRouter.post('/search-product',searchProduct)
 
 export default productRouter
