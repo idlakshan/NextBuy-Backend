@@ -201,8 +201,7 @@ export async function paymentController(request, response) {
         item.productId.discount,
       );
 
-      const unitAmount = Math.round(priceAfterDiscount * 100);
-
+       const unitAmount = Math.round(priceAfterDiscount * item.quantity * 100);
       return {
         price_data: {
           currency: "lkr",
@@ -220,7 +219,7 @@ export async function paymentController(request, response) {
           },
           unit_amount: unitAmount,
         },
-        quantity: item.quantity,
+        quantity: 1,
       };
     });
 
